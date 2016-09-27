@@ -120,7 +120,7 @@ class CRBM:
                                         self.learning_rate * self.batch_size, name='grad_cias')
 
                 # TODO: Is there any method to calculate batch-elementwise convolution?
-                self.grad_weights = tf.zeros(self.weight_shape)
+                temp_grad_weights = tf.zeros(self.weight_shape)
                 hid_filter0 = tf.reverse(self.hid_prob0, [False, True, True, False])
                 hid_filter1 = tf.reverse(self.hid_prob1, [False, True, True, False])
                 for idx in range(0, self.batch_size):
@@ -137,10 +137,10 @@ class CRBM:
                                                    one_ch_conv_shape)
                     positive = tf.concat(2, positive)
                     negative = tf.concat(2, negative)
-                    self.grad_weights = tf.add(self.grad_weights, tf.mul(
-                        tf.slice(tf.sub(positive, negative), [0, 0, 0, 0], self.weight_shape),
-                        self.learning_rate / (self.width * self.height)))
+                    temp_grad_weights = tf.add(temp_grad_weights,
+                                               tf.slice(tf.sub(positive, negative), [0, 0, 0, 0], self.weight_shape))
 
+                self.grad_weights = tf.mul(temp_grad_weights, self.learning_rate / (self.width * self.height))
             self.gradient_ascent = [self.weights.assign_add(self.grad_weights),
                                self.bias.assign_add(self.grad_bias),
                                self.cias.assign_add(self.grad_cias)]
