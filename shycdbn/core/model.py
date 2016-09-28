@@ -30,3 +30,7 @@ class Model:
     @abstractproperty
     def output(self):
         pass
+
+    @abstractproperty
+    def training_finished(self):
+        pass

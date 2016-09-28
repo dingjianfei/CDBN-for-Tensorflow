@@ -52,6 +52,22 @@ class CRBM(Model):
     def output(self):
         return self.pooled
 
+    @property
+    def training_finished(self):
+        return False
+
+    # Build overall graphs
+    def build_graphs(self):
+        with tf.name_scope(self.name) as _:
+            self.__declare_variables()
+            self.__derive_hidden()
+            self.__pool()
+            self.__gibbs_sampling()
+            self.__gradient_ascent()
+            self.__summary()
+
+        return self.gradient_ascent
+
     # Reused private methods
     @staticmethod
     def __weight_variable(shape, name):
@@ -226,15 +242,3 @@ class CRBM(Model):
                     self.num_features)
             self.__image_summary('generated_images', self.vis_1, self.batch_size)
             self.__image_summary('weight_images', tf.transpose(self.weights, perm=[3, 0, 1, 2]), self.num_features)
-
-    # Build overall graphs
-    def build_graphs(self):
-        with tf.name_scope(self.name) as _:
-            self.__declare_variables()
-            self.__derive_hidden()
-            self.__pool()
-            self.__gibbs_sampling()
-            self.__gradient_ascent()
-            self.__summary()
-
-        return self.gradient_ascent
