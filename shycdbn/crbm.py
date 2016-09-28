@@ -126,6 +126,14 @@ class CRBM(Model):
     def __image_summary(self, name, image, max_images):
         tf.image_summary('{}/{}'.format(self.name, name), image, max_images=max_images)
 
+    def __multidimension_summary(self, name, image, shape, max_images):
+        for idx in range(0, self.batch_size):
+            self.__image_summary(
+                '{}/{}'.format(name, idx),
+                tf.transpose(tf.slice(image, [idx, 0, 0, 0], [1] + shape),
+                             perm=[3, 1, 2, 0]),
+                max_images)
+
     @staticmethod
     def __sample(prob, name):
         return tf.nn.relu(
@@ -237,7 +245,15 @@ class CRBM(Model):
             self.__mean_sqrt_summary('cias', self.cias)
 
             # Images
-            self.__image_summary('input_images', self.x, self.batch_size)
+            if self.depth == 3:
+                self.__image_summary('input_images', self.x, self.batch_size)
+                self.__image_summary('generated_images', self.vis_1, self.batch_size)
+                self.__image_summary('weight_images', tf.transpose(self.weights, perm=[3, 0, 1, 2]), self.num_features)
+            else:
+                # self.__multidimension_summary('input_images', self.x, self.visible_shape, self.num_features)
+                self.__multidimension_summary('generated_images', self.vis_1, self.visible_shape, self.num_features)
+                # self.__image_summary('weight_images', tf.transpose(self.weights, perm=[3, 0, 1, 2]), self.num_features)
+
             for idx in range(0, self.batch_size):
                 self.__image_summary(
                     'hidden_images/{}'.format(idx),
@@ -249,5 +265,3 @@ class CRBM(Model):
                     tf.transpose(tf.slice(self.pooled, [idx, 0, 0, 0], [1] + self.pooled_shape),
                                  perm=[3, 1, 2, 0]),
                     self.num_features)
-            self.__image_summary('generated_images', self.vis_1, self.batch_size)
-            self.__image_summary('weight_images', tf.transpose(self.weights, perm=[3, 0, 1, 2]), self.num_features)
