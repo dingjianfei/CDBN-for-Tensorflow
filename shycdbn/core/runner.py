@@ -15,6 +15,7 @@
 
 import tensorflow as tf
 import os
+from model import Model
 
 flags = tf.app.flags
 flags.DEFINE_string('summary_dir', 'summary', 'Directory where all event data are stored')
@@ -26,8 +27,12 @@ flags.DEFINE_float('learning_rate', .01, 'Learning rate')
 
 FLAGS = flags.FLAGS
 
+
 class Runner:
     def __init__(self, preparator, model):
+        if issubclass(model, Model):
+            raise TypeError
+
         file_paths = preparator.prepare()
 
         def decode_file(filename_queue):

@@ -11,4 +11,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Model"""
+"""Abstract Class for Models"""
+
+from abc import ABCMeta, abstractmethod, abstractproperty
+
+
+class Model:
+    __metaclass__ = ABCMeta
+
+    @abstractmethod
+    def build_graphs(self):
+        pass
+
+    @abstractproperty
+    def input(self):
+        pass
+
+    @abstractproperty
+    def output(self):
+        pass

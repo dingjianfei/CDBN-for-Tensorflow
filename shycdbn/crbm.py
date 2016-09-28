@@ -13,10 +13,14 @@
 
 """Convolutional Restrict Boltzmann Machine for Tensorflow"""
 import tensorflow as tf
+from core.model import Model
 
-class CRBM:
+
+class CRBM(Model):
     def __init__(self, name,
-                 input_size, input_depth, weight_size, num_features, pool_size, batch_size, learning_rate = 0.01):
+                 input_size, input_depth,
+                 weight_size, num_features, pool_size,
+                 batch_size, learning_rate = 0.01, is_continuous=True):
         self.name = name
 
         # Training hyperparameters
@@ -37,6 +41,17 @@ class CRBM:
         self.pool_size = pool_size
         self.pooled_shape = [self.height / self.pool_size, self.width / self.pool_size, self.num_features]
 
+        self.is_continuous = is_continuous
+
+    # Overrode abstract parts
+    @property
+    def input(self):
+        return self.x
+
+    @property
+    def output(self):
+        return self.pooled
+
     # Reused private methods
     @staticmethod
     def __weight_variable(shape, name):
@@ -49,12 +64,12 @@ class CRBM:
         return tf.Variable(initial_values, name=name)
 
     @staticmethod
-    def __conv2d(x, W):
-        return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
+    def __conv2d(x, weights):
+        return tf.nn.conv2d(x, weights, strides=[1, 1, 1, 1], padding='SAME')
 
     @staticmethod
-    def __depthwise_conv2d(x, W):
-        return tf.nn.depthwise_conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
+    def __depthwise_conv2d(x, weights):
+        return tf.nn.depthwise_conv2d(x, weights, strides=[1, 1, 1, 1], padding='SAME')
 
     def __max_pool(self, x):
         shape = [1, self.pool_size, self.pool_size, 1]
@@ -87,6 +102,13 @@ class CRBM:
     def __image_summary(self, name, image, max_images):
         tf.image_summary('{}/{}'.format(self.name, name), image, max_images=max_images)
 
+    @staticmethod
+    def __sample(prob, name):
+        return tf.nn.relu(
+            tf.sign(prob - tf.random_uniform(prob.get_shape(), maxval=1.)),
+            name=name)
+
+
     # Declare variable
     def __declare_variables(self):
         # Bias variables
@@ -95,8 +117,8 @@ class CRBM:
 
         # Visible (input) units
         with tf.name_scope('visible') as _:
-            self.input = tf.placeholder(tf.float32, shape=self.input_shape, name='x')
-            self.vis_0 = tf.div(self.input, 255, 'vis_0')
+            self.x = tf.placeholder(tf.float32, shape=self.input_shape, name='x')
+            self.vis_0 = tf.div(self.x, 255, 'vis_0')
 
         # Weight variables
         with tf.name_scope('weights') as _:
@@ -109,28 +131,31 @@ class CRBM:
         with tf.name_scope('hidden') as _:
             self.signal = self.__conv2d(self.vis_0, self.weights) + self.bias
             self.hid_prob0 = tf.sigmoid(self.signal, name='hid_prob_0')
-            self.hid_state0 = tf.nn.relu(
-                tf.sign(self.hid_prob0 - tf.random_uniform(self.hid_prob0.get_shape(), maxval=1.)),
-                name='hid_state_0')
+            self.hid_state0 = self.__sample(self.hid_prob0, 'hid_state_0')
 
     def __pool(self):
         # Pooling
         with tf.name_scope('pooling') as _:
             self.pooled_prob = tf.sigmoid(
                 tf.mul(self.__avg_pool(tf.exp(self.signal)), self.pool_size * self.pool_size), name='pooled_prob')
-            self.output = self.pooled = tf.nn.relu(
-                tf.sign(self.pooled_prob - tf.random_uniform(self.pooled_prob.get_shape(), maxval=1.)),
-                name='pooled')
+            self.pooled = self.__sample(self.pooled_prob, 'pooled')
 
     def __gibbs_sampling(self):
         # Gibbs sampling
         # Sample visible units
         with tf.name_scope('visible') as _:
-            normal_dist = tf.contrib.distributions.Normal(
-                mu=self.__conv2d(self.hid_state0, self.weights_flipped) + self.cias, sigma=1.)
-            self.vis_1 = tf.reshape(
-                tf.div(normal_dist.sample_n(1), self.weight_size * self.weight_size),
-                self.input_shape, name='vis_1')
+            signal_back = self.__conv2d(self.hid_state0, self.weights_flipped) + self.cias
+            if self.is_continuous:
+                # Visible units are continuous
+                normal_dist = tf.contrib.distributions.Normal(
+                    mu=signal_back, sigma=1.)
+                self.vis_1 = tf.reshape(
+                    tf.div(normal_dist.sample_n(1), self.weight_size * self.weight_size),
+                    self.input_shape, name='vis_1')
+            else:
+                # Visible units are binary
+                vis1_prob = tf.sigmoid(signal_back, name='vis_1')
+                self.vis_1 = self.__sample(vis1_prob, 'vis_1')
 
         # Sample hidden units
         with tf.name_scope('hidden') as _:
@@ -187,7 +212,7 @@ class CRBM:
             self.__mean_sqrt_summary('cias', self.cias)
 
             # Images
-            self.__image_summary('input_images', self.input, self.batch_size)
+            self.__image_summary('input_images', self.x, self.batch_size)
             for idx in range(0, self.batch_size):
                 self.__image_summary(
                     'hidden_images/{}'.format(idx),
