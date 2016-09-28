@@ -20,7 +20,9 @@ class CRBM(Model):
     def __init__(self, name,
                  input_size, input_depth,
                  weight_size, num_features, pool_size,
-                 batch_size, learning_rate = 0.01, is_continuous=True):
+                 batch_size, learning_rate, is_continuous):
+        self._input = None
+
         self.name = name
 
         # Training hyperparameters
@@ -46,7 +48,7 @@ class CRBM(Model):
     # Overrode abstract parts
     @property
     def input(self):
-        return self.x
+        return self._input if self._input else self.x
 
     @property
     def output(self):
@@ -54,7 +56,12 @@ class CRBM(Model):
 
     @property
     def training_finished(self):
-        return False
+        # TODO: Temp trick
+        return self.is_continuous
+
+    @property
+    def ops(self):
+        return self.gradient_ascent
 
     # Build overall graphs
     def build_graphs(self):
@@ -66,7 +73,8 @@ class CRBM(Model):
             self.__gradient_ascent()
             self.__summary()
 
-        return self.gradient_ascent
+    def set_input(self, input):
+        self._input = input
 
     # Reused private methods
     @staticmethod
@@ -133,7 +141,7 @@ class CRBM(Model):
 
         # Visible (input) units
         with tf.name_scope('visible') as _:
-            self.x = tf.placeholder(tf.float32, shape=self.input_shape, name='x')
+            self.x = self._input if self._input is not None else tf.placeholder(tf.float32, shape=self.input_shape, name='x')
             self.vis_0 = tf.div(self.x, 255, 'vis_0')
 
         # Weight variables
@@ -215,7 +223,8 @@ class CRBM(Model):
         # Summary
         with tf.name_scope('summary') as _:
             # Loss function
-            self.__mean_sqrt_summary('loss_func', self.vis_0 - self.vis_1)
+            self.loss_func = tf.sqrt(tf.reduce_mean(tf.square(self.vis_0 - self.vis_1)))
+            self.__scalar_summary('loss_func', self.loss_func)
 
             # Gradients
             self.__mean_sqrt_summary('grad_weights', self.grad_weights)

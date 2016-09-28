@@ -34,3 +34,7 @@ class Model:
     @abstractproperty
     def training_finished(self):
         pass
+
+    @abstractproperty
+    def ops(self):
+        pass

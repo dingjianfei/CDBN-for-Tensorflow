@@ -60,7 +60,7 @@ class Runner:
             file_paths, FLAGS.batch_size, FLAGS.num_threads, num_epochs=FLAGS.num_epochs)
 
         self.model = model
-        self.ops = self.model.build_graphs()
+        self.model.build_graphs()
 
         batch_num = tf.Variable(tf.constant(0))
         increment_batch_num = batch_num.assign_add(1)
@@ -74,7 +74,7 @@ class Runner:
 
         self.saver = tf.train.Saver()
 
-        self.ops += [increment_batch_num, merged_summary]
+        self.ops = [increment_batch_num, merged_summary]
 
     def run(self):
         with tf.Session() as sess:
@@ -89,9 +89,16 @@ class Runner:
             try:
                 while not coord.should_stop():
                     images, filenames = sess.run(self.input_pipeline)
-                    outputs = sess.run(self.ops, feed_dict={self.model.input: images})
-                    summary_writer.add_summary(outputs[-1], outputs[-2])
-                    self.saver.save(sess, FLAGS.model_path)
+                    if not self.model.training_finished:
+                        # Continue training
+                        ops = self.model.ops + self.ops
+                        outputs = sess.run(ops, feed_dict={self.model.input: images})
+                        summary_writer.add_summary(outputs[-1], outputs[-2])
+                        self.saver.save(sess, FLAGS.model_path)
+                    else:
+                        # Training finished
+                        output = sess.run(self.model.output, feed_dict={self.model.input: images})
+
             except tf.errors.OutOfRangeError:
                 print('Done training -- epoch limit reached')
 

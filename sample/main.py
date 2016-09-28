@@ -17,14 +17,16 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 import tensorflow as tf
 from shycdbn.dataset.photos import FoursqaurePhotos
 from shycdbn.core.runner import Runner
-from shycdbn.crbm import CRBM
-
+# from shycdbn.crbm import CRBM
+from shycdbn.cdbn import CDBN
 FLAGS = tf.app.flags.FLAGS
 
 
 def main(argv=None):
+    # runner = Runner(FoursqaurePhotos(),
+    #                 CRBM('layer1', 300, 3, 10, 32, 2, FLAGS.batch_size, FLAGS.learning_rate, True))
     runner = Runner(FoursqaurePhotos(),
-                    CRBM('layer1', 300, 3, 10, 32, 2, FLAGS.batch_size, learning_rate=FLAGS.learning_rate))
+                    CDBN(FLAGS.batch_size, FLAGS.learning_rate))
     runner.run()
 
 if __name__ == '__main__':
