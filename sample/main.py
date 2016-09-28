@@ -11,8 +11,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import sys
-sys.path.insert(0, '/notebooks/cdbn')
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import tensorflow as tf
 from shycdbn.dataset.photos import FoursqaurePhotos
@@ -22,7 +22,8 @@ from shycdbn.crbm import CRBM
 FLAGS = tf.app.flags.FLAGS
 
 def main(argv=None):
-    runner = Runner(FoursqaurePhotos(), CRBM('layer1', 300, 3, 10, 32, 2, FLAGS.batch_size, learning_rate=FLAGS.learning_rate))
+    runner = Runner(FoursqaurePhotos(),
+                    CRBM('layer1', 300, 3, 10, 32, 2, FLAGS.batch_size, learning_rate=FLAGS.learning_rate))
     runner.run()
 
 if __name__ == '__main__':

@@ -14,7 +14,8 @@
 from setuptools import find_packages, setup
 
 REQUIRED_PACKAGES = [
-      'pymongo'
+      'pymongo',
+      'tensorflow'
 ]
 
 setup(name='shycdbn',

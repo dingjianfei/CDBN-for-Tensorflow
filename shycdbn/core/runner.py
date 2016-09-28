@@ -84,7 +84,7 @@ class Runner:
             try:
                 while not coord.should_stop():
                     images, filenames = sess.run(self.input_pipeline)
-                    outputs = sess.run(self.ops, feed_dict={self.model.x: images})
+                    outputs = sess.run(self.ops, feed_dict={self.model.input: images})
                     summary_writer.add_summary(outputs[-1], outputs[-2])
                     self.saver.save(sess, FLAGS.model_path)
             except tf.errors.OutOfRangeError:

@@ -32,27 +32,40 @@ class CRBM:
         self.num_features = num_features
         self.weight_shape = [self.weight_size, self.weight_size, self.depth, self.num_features]
 
+        self.hidden_shape = [self.height, self.width, self.num_features]
+
         self.pool_size = pool_size
+        self.pooled_shape = [self.height / self.pool_size, self.width / self.pool_size, self.num_features]
 
     # Reused private methods
-    def __weight_variable(self, shape, name):
+    @staticmethod
+    def __weight_variable(shape, name):
         initial_values = tf.truncated_normal(shape, stddev=.1)
         return tf.Variable(initial_values, name=name)
-    def __bias_variables(self, shape, name):
+
+    @staticmethod
+    def __bias_variables(shape, name):
         initial_values = tf.zeros(shape)
         return tf.Variable(initial_values, name=name)
 
-    def __conv2d(self, x, W):
+    @staticmethod
+    def __conv2d(x, W):
         return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
 
-    def __depthwise_conv2d(self, x, W):
+    @staticmethod
+    def __depthwise_conv2d(x, W):
         return tf.nn.depthwise_conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
 
     def __max_pool(self, x):
         shape = [1, self.pool_size, self.pool_size, 1]
         return tf.nn.max_pool(x, ksize=shape, strides=shape, padding='SAME')
 
-    def __get_ith_element_4d(self, tensor, i, shape):
+    def __avg_pool(self, x):
+        shape = [1, self.pool_size, self.pool_size, 1]
+        return tf.nn.avg_pool(x, ksize=shape, strides=shape, padding='SAME')
+
+    @staticmethod
+    def __get_ith_element_4d(tensor, i, shape):
         return tf.slice(tensor, [i, 0, 0, 0], shape)
 
     def __get_ij_vis_4d(self, tensor, i, j):
@@ -83,8 +96,8 @@ class CRBM:
 
             # Visible (input) units
             with tf.name_scope('visible') as _:
-                self.x = tf.placeholder(tf.float32, shape=self.input_shape, name='x')
-                self.vis_0 = tf.div(self.x, 255, 'vis_0')
+                self.input = tf.placeholder(tf.float32, shape=self.input_shape, name='x')
+                self.vis_0 = tf.div(self.input, 255, 'vis_0')
 
             # Weight variables
             with tf.name_scope('weights') as _:
@@ -94,10 +107,19 @@ class CRBM:
 
             # Hidden units
             with tf.name_scope('hidden') as _:
-                self.hid_prob0 = tf.sigmoid(self.__conv2d(self.vis_0, self.weights) + self.bias, name='hid_prob_0')
+                self.signal = self.__conv2d(self.vis_0, self.weights) + self.bias
+                self.hid_prob0 = tf.sigmoid(self.signal, name='hid_prob_0')
                 self.hid_state0 = tf.nn.relu(
                     tf.sign(self.hid_prob0 - tf.random_uniform(self.hid_prob0.get_shape(), maxval=1.)),
                     name='hid_state_0')
+
+            # Pooling
+            with tf.name_scope('pooling') as _:
+                self.pooled_prob = tf.sigmoid(
+                    tf.mul(self.__avg_pool(tf.exp(self.signal)), self.pool_size * self.pool_size), name='pooled_prob')
+                self.output = self.pooled = tf.nn.relu(
+                    tf.sign(self.pooled_prob - tf.random_uniform(self.pooled_prob.get_shape(), maxval=1.)),
+                    name='pooled')
 
             # Gibbs sampling
             # Sample visible units
@@ -161,11 +183,18 @@ class CRBM:
                 self.__mean_sqrt_summary('cias', self.cias)
 
                 # Images
-                self.__image_summary('input_images', self.x, self.batch_size)
-                self.__image_summary(
-                    'hidden_images',
-                    tf.transpose(tf.reduce_mean(self.hid_prob0, 0, keep_dims=True), perm=[3, 1, 2, 0]),
-                    self.num_features)
+                self.__image_summary('input_images', self.input, self.batch_size)
+                for idx in range(0, self.batch_size):
+                    self.__image_summary(
+                        'hidden_images/{}'.format(idx),
+                        tf.transpose(tf.slice(self.hid_prob0, [idx, 0, 0, 0], [1] + self.hidden_shape),
+                                     perm=[3, 1, 2, 0]),
+                        self.num_features)
+                    self.__image_summary(
+                        'pooled images/{}'.format(idx),
+                        tf.transpose(tf.slice(self.pooled, [idx, 0, 0, 0], [1] + self.pooled_shape),
+                                     perm=[3, 1, 2, 0]),
+                        self.num_features)
                 self.__image_summary('generated_images', self.vis_1, self.batch_size)
                 self.__image_summary('weight_images', tf.transpose(self.weights, perm=[3, 0, 1, 2]), self.num_features)
 
