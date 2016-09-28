@@ -87,115 +87,129 @@ class CRBM:
     def __image_summary(self, name, image, max_images):
         tf.image_summary('{}/{}'.format(self.name, name), image, max_images=max_images)
 
+    # Declare variable
+    def __declare_variables(self):
+        # Bias variables
+        self.bias = self.__bias_variables([self.num_features], 'bias')
+        self.cias = self.__bias_variables([self.depth], 'cias')
+
+        # Visible (input) units
+        with tf.name_scope('visible') as _:
+            self.input = tf.placeholder(tf.float32, shape=self.input_shape, name='x')
+            self.vis_0 = tf.div(self.input, 255, 'vis_0')
+
+        # Weight variables
+        with tf.name_scope('weights') as _:
+            self.weights = self.__weight_variable(self.weight_shape, 'weights_forward')
+            self.weights_flipped = tf.transpose(
+                tf.reverse(self.weights, [True, True, False, False]), perm=[0, 1, 3, 2], name='weight_back')
+
+    def __derive_hidden(self):
+        # Hidden units
+        with tf.name_scope('hidden') as _:
+            self.signal = self.__conv2d(self.vis_0, self.weights) + self.bias
+            self.hid_prob0 = tf.sigmoid(self.signal, name='hid_prob_0')
+            self.hid_state0 = tf.nn.relu(
+                tf.sign(self.hid_prob0 - tf.random_uniform(self.hid_prob0.get_shape(), maxval=1.)),
+                name='hid_state_0')
+
+    def __pool(self):
+        # Pooling
+        with tf.name_scope('pooling') as _:
+            self.pooled_prob = tf.sigmoid(
+                tf.mul(self.__avg_pool(tf.exp(self.signal)), self.pool_size * self.pool_size), name='pooled_prob')
+            self.output = self.pooled = tf.nn.relu(
+                tf.sign(self.pooled_prob - tf.random_uniform(self.pooled_prob.get_shape(), maxval=1.)),
+                name='pooled')
+
+    def __gibbs_sampling(self):
+        # Gibbs sampling
+        # Sample visible units
+        with tf.name_scope('visible') as _:
+            normal_dist = tf.contrib.distributions.Normal(
+                mu=self.__conv2d(self.hid_state0, self.weights_flipped) + self.cias, sigma=1.)
+            self.vis_1 = tf.reshape(
+                tf.div(normal_dist.sample_n(1), self.weight_size * self.weight_size),
+                self.input_shape, name='vis_1')
+
+        # Sample hidden units
+        with tf.name_scope('hidden') as _:
+            self.hid_prob1 = tf.sigmoid(self.__conv2d(self.vis_1, self.weights) + self.bias, name='hid_prob_1')
+
+    def __gradient_ascent(self):
+        # Gradient ascent
+        with tf.name_scope('gradient') as _:
+            self.grad_bias = tf.mul(tf.reduce_mean(self.hid_prob0 - self.hid_prob1, [0, 1, 2]),
+                                    self.learning_rate * self.batch_size, name='grad_bias')
+            self.grad_cias = tf.mul(tf.reduce_mean(self.vis_0 - self.vis_1, [0, 1, 2]),
+                                    self.learning_rate * self.batch_size, name='grad_cias')
+
+            # TODO: Is there any method to calculate batch-elementwise convolution?
+            temp_grad_weights = tf.zeros(self.weight_shape)
+            hid_filter0 = tf.reverse(self.hid_prob0, [False, True, True, False])
+            hid_filter1 = tf.reverse(self.hid_prob1, [False, True, True, False])
+            for idx in range(0, self.batch_size):
+                hid0_ith = self.__get_ith_hid_4d(hid_filter0, idx)
+                hid1_ith = self.__get_ith_hid_4d(hid_filter1, idx)
+
+                positive = [0] * self.depth
+                negative = [0] * self.depth
+                one_ch_conv_shape = [self.width, self.height, 1, self.num_features]
+                for jdx in range(0, self.depth):
+                    positive[jdx] = tf.reshape(self.__conv2d(self.__get_ij_vis_4d(self.vis_0, idx, jdx), hid0_ith),
+                                               one_ch_conv_shape)
+                    negative[jdx] = tf.reshape(self.__conv2d(self.__get_ij_vis_4d(self.vis_1, idx, jdx), hid1_ith),
+                                               one_ch_conv_shape)
+                positive = tf.concat(2, positive)
+                negative = tf.concat(2, negative)
+                temp_grad_weights = tf.add(temp_grad_weights,
+                                           tf.slice(tf.sub(positive, negative), [0, 0, 0, 0], self.weight_shape))
+
+            self.grad_weights = tf.mul(temp_grad_weights, self.learning_rate / (self.width * self.height))
+        self.gradient_ascent = [self.weights.assign_add(self.grad_weights),
+                                self.bias.assign_add(self.grad_bias),
+                                self.cias.assign_add(self.grad_cias)]
+
+    def __summary(self):
+        # Summary
+        with tf.name_scope('summary') as _:
+            # Loss function
+            self.__mean_sqrt_summary('loss_func', self.vis_0 - self.vis_1)
+
+            # Gradients
+            self.__mean_sqrt_summary('grad_weights', self.grad_weights)
+            # self.__mean_sqrt_summary('grad_bias', self.grad_bias)
+            # self.__mean_sqrt_summary('grad_cias', self.grad_cias)
+
+            # Parameters
+            self.__mean_sqrt_summary('weights', self.weights)
+            self.__mean_sqrt_summary('bias', self.bias)
+            self.__mean_sqrt_summary('cias', self.cias)
+
+            # Images
+            self.__image_summary('input_images', self.input, self.batch_size)
+            for idx in range(0, self.batch_size):
+                self.__image_summary(
+                    'hidden_images/{}'.format(idx),
+                    tf.transpose(tf.slice(self.hid_prob0, [idx, 0, 0, 0], [1] + self.hidden_shape),
+                                 perm=[3, 1, 2, 0]),
+                    self.num_features)
+                self.__image_summary(
+                    'pooled images/{}'.format(idx),
+                    tf.transpose(tf.slice(self.pooled, [idx, 0, 0, 0], [1] + self.pooled_shape),
+                                 perm=[3, 1, 2, 0]),
+                    self.num_features)
+            self.__image_summary('generated_images', self.vis_1, self.batch_size)
+            self.__image_summary('weight_images', tf.transpose(self.weights, perm=[3, 0, 1, 2]), self.num_features)
+
     # Build overall graphs
     def build_graphs(self):
         with tf.name_scope(self.name) as _:
-            # Bias variables
-            self.bias = self.__bias_variables([self.num_features], 'bias')
-            self.cias = self.__bias_variables([self.depth], 'cias')
-
-            # Visible (input) units
-            with tf.name_scope('visible') as _:
-                self.input = tf.placeholder(tf.float32, shape=self.input_shape, name='x')
-                self.vis_0 = tf.div(self.input, 255, 'vis_0')
-
-            # Weight variables
-            with tf.name_scope('weights') as _:
-                self.weights = self.__weight_variable(self.weight_shape, 'weights_forward')
-                self.weights_flipped = tf.transpose(
-                    tf.reverse(self.weights, [True, True, False, False]), perm=[0, 1, 3, 2], name='weight_back')
-
-            # Hidden units
-            with tf.name_scope('hidden') as _:
-                self.signal = self.__conv2d(self.vis_0, self.weights) + self.bias
-                self.hid_prob0 = tf.sigmoid(self.signal, name='hid_prob_0')
-                self.hid_state0 = tf.nn.relu(
-                    tf.sign(self.hid_prob0 - tf.random_uniform(self.hid_prob0.get_shape(), maxval=1.)),
-                    name='hid_state_0')
-
-            # Pooling
-            with tf.name_scope('pooling') as _:
-                self.pooled_prob = tf.sigmoid(
-                    tf.mul(self.__avg_pool(tf.exp(self.signal)), self.pool_size * self.pool_size), name='pooled_prob')
-                self.output = self.pooled = tf.nn.relu(
-                    tf.sign(self.pooled_prob - tf.random_uniform(self.pooled_prob.get_shape(), maxval=1.)),
-                    name='pooled')
-
-            # Gibbs sampling
-            # Sample visible units
-            with tf.name_scope('visible') as _:
-                normal_dist = tf.contrib.distributions.Normal(
-                    mu=self.__conv2d(self.hid_state0, self.weights_flipped) + self.cias, sigma=1.)
-                self.vis_1 = tf.reshape(
-                    tf.div(normal_dist.sample_n(1), self.weight_size * self.weight_size),
-                    self.input_shape, name='vis_1')
-
-            # Sample hidden units
-            with tf.name_scope('hidden') as _:
-                self.hid_prob1 = tf.sigmoid(self.__conv2d(self.vis_1, self.weights) + self.bias, name='hid_prob_1')
-
-            # Gradient ascent
-            with tf.name_scope('gradient') as _:
-                self.grad_bias = tf.mul(tf.reduce_mean(self.hid_prob0 - self.hid_prob1, [0, 1, 2]),
-                                        self.learning_rate * self.batch_size, name='grad_bias')
-                self.grad_cias = tf.mul(tf.reduce_mean(self.vis_0 - self.vis_1, [0, 1, 2]),
-                                        self.learning_rate * self.batch_size, name='grad_cias')
-
-                # TODO: Is there any method to calculate batch-elementwise convolution?
-                temp_grad_weights = tf.zeros(self.weight_shape)
-                hid_filter0 = tf.reverse(self.hid_prob0, [False, True, True, False])
-                hid_filter1 = tf.reverse(self.hid_prob1, [False, True, True, False])
-                for idx in range(0, self.batch_size):
-                    hid0_ith = self.__get_ith_hid_4d(hid_filter0, idx)
-                    hid1_ith = self.__get_ith_hid_4d(hid_filter1, idx)
-
-                    positive = [0] * self.depth
-                    negative = [0] * self.depth
-                    one_ch_conv_shape = [self.width, self.height, 1, self.num_features]
-                    for jdx in range(0, self.depth):
-                        positive[jdx] = tf.reshape(self.__conv2d(self.__get_ij_vis_4d(self.vis_0, idx, jdx), hid0_ith),
-                                                   one_ch_conv_shape)
-                        negative[jdx] = tf.reshape(self.__conv2d(self.__get_ij_vis_4d(self.vis_1, idx, jdx), hid1_ith),
-                                                   one_ch_conv_shape)
-                    positive = tf.concat(2, positive)
-                    negative = tf.concat(2, negative)
-                    temp_grad_weights = tf.add(temp_grad_weights,
-                                               tf.slice(tf.sub(positive, negative), [0, 0, 0, 0], self.weight_shape))
-
-                self.grad_weights = tf.mul(temp_grad_weights, self.learning_rate / (self.width * self.height))
-            self.gradient_ascent = [self.weights.assign_add(self.grad_weights),
-                               self.bias.assign_add(self.grad_bias),
-                               self.cias.assign_add(self.grad_cias)]
-
-            #Summary
-            with tf.name_scope('summary') as _:
-                # Loss function
-                self.__mean_sqrt_summary('loss_func', self.vis_0 - self.vis_1)
-
-                # Gradients
-                self.__mean_sqrt_summary('grad_weights', self.grad_weights)
-                # self.__mean_sqrt_summary('grad_bias', self.grad_bias)
-                # self.__mean_sqrt_summary('grad_cias', self.grad_cias)
-
-                # Parameters
-                self.__mean_sqrt_summary('weights', self.weights)
-                self.__mean_sqrt_summary('bias', self.bias)
-                self.__mean_sqrt_summary('cias', self.cias)
-
-                # Images
-                self.__image_summary('input_images', self.input, self.batch_size)
-                for idx in range(0, self.batch_size):
-                    self.__image_summary(
-                        'hidden_images/{}'.format(idx),
-                        tf.transpose(tf.slice(self.hid_prob0, [idx, 0, 0, 0], [1] + self.hidden_shape),
-                                     perm=[3, 1, 2, 0]),
-                        self.num_features)
-                    self.__image_summary(
-                        'pooled images/{}'.format(idx),
-                        tf.transpose(tf.slice(self.pooled, [idx, 0, 0, 0], [1] + self.pooled_shape),
-                                     perm=[3, 1, 2, 0]),
-                        self.num_features)
-                self.__image_summary('generated_images', self.vis_1, self.batch_size)
-                self.__image_summary('weight_images', tf.transpose(self.weights, perm=[3, 0, 1, 2]), self.num_features)
+            self.__declare_variables()
+            self.__derive_hidden()
+            self.__pool()
+            self.__gibbs_sampling()
+            self.__gradient_ascent()
+            self.__summary()
 
         return self.gradient_ascent
