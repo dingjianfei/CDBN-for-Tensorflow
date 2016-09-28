@@ -21,6 +21,7 @@ from shycdbn.crbm import CRBM
 
 FLAGS = tf.app.flags.FLAGS
 
+
 def main(argv=None):
     runner = Runner(FoursqaurePhotos(),
                     CRBM('layer1', 300, 3, 10, 32, 2, FLAGS.batch_size, learning_rate=FLAGS.learning_rate))
