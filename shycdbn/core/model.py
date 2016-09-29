@@ -19,8 +19,13 @@ from abc import ABCMeta, abstractmethod, abstractproperty
 class Model:
     __metaclass__ = ABCMeta
 
+    # Build overall graphs
     @abstractmethod
     def build_graphs(self):
+        pass
+
+    @abstractmethod
+    def propagate_results(self, results):
         pass
 
     @abstractproperty
@@ -29,10 +34,6 @@ class Model:
 
     @abstractproperty
     def output(self):
-        pass
-
-    @abstractproperty
-    def training_finished(self):
         pass
 
     @abstractproperty

@@ -26,6 +26,7 @@ class CDBN(Model):
         ]
         self._layer_iterator = self.__ops_generator()
 
+    # Overwritten methods and propeties
     @property
     def input(self):
         return self.crbms[0].input
@@ -33,10 +34,6 @@ class CDBN(Model):
     @property
     def output(self):
         return self.crbms[-1].output
-
-    @property
-    def training_finished(self):
-        return False if self.training_layer is not None else True
 
     @property
     def ops(self):
@@ -48,6 +45,9 @@ class CDBN(Model):
                 crbm.set_input(self.crbms[idx - 1].output)
             crbm.build_graphs()
 
+    def propagate_results(self, results):
+        self.training_layer.propagate_results(results)
+
     @property
     def training_layer(self):
         try:
@@ -57,5 +57,5 @@ class CDBN(Model):
 
     def __ops_generator(self):
         for crbm in self.crbms:
-            while not crbm.training_finished:
+            while crbm.ops is not None:
                 yield crbm

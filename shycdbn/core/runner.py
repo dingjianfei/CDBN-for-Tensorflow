@@ -89,15 +89,16 @@ class Runner:
             try:
                 while not coord.should_stop():
                     images, filenames = sess.run(self.input_pipeline)
-                    if not self.model.training_finished:
+                    if self.model.ops is not None:
                         # Continue training
                         ops = self.model.ops + self.ops
-                        outputs = sess.run(ops, feed_dict={self.model.input: images})
-                        summary_writer.add_summary(outputs[-1], outputs[-2])
+                        results = sess.run(ops, feed_dict={self.model.input: images})
+                        summary_writer.add_summary(results[-1], results[-2])
+                        self.model.propagate_results(results[0:-2])
                         self.saver.save(sess, FLAGS.model_path)
                     else:
                         # Training finished
-                        output = sess.run(self.model.output, feed_dict={self.model.input: images})
+                        results = sess.run(self.model.output, feed_dict={self.model.input: images})
 
             except tf.errors.OutOfRangeError:
                 print('Done training -- epoch limit reached')

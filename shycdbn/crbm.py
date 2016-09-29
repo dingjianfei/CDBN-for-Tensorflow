@@ -45,6 +45,8 @@ class CRBM(Model):
 
         self.is_continuous = is_continuous
 
+        self.loss_func_val = None
+
     # Overrode abstract parts
     @property
     def input(self):
@@ -55,13 +57,9 @@ class CRBM(Model):
         return self.pooled
 
     @property
-    def training_finished(self):
-        # TODO: Temp trick
-        return self.is_continuous
-
-    @property
     def ops(self):
-        return self.gradient_ascent
+        return self.gradient_ascent + [self.loss_func] if self.loss_func_val is None or self.loss_func_val < .9 \
+            else None
 
     # Build overall graphs
     def build_graphs(self):
@@ -72,6 +70,9 @@ class CRBM(Model):
             self.__gibbs_sampling()
             self.__gradient_ascent()
             self.__summary()
+
+    def propagate_results(self, results):
+        self.loss_func_val = results[-1]
 
     def set_input(self, input):
         self._input = input
