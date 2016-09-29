@@ -251,16 +251,25 @@ class CRBM(Model):
             # Images
             if self.write_image:
                 if self.depth == 3:
-                    self.__image_summary('input_generated_images', tf.concat(2, [self.vis_0, self.vis_1]), self.batch_size)
+                    self.__image_summary('input_generated_images', tf.concat(1, [self.vis_0, self.vis_1]), self.batch_size)
                     self.__image_summary('weight_images', tf.transpose(self.weights, perm=[3, 0, 1, 2]), self.num_features)
                 else:
                     # self.__multidimension_summary('input_images', self.x, self.visible_shape, self.num_features)
                     self.__multidimension_summary('generated_images', self.vis_1, self.visible_shape, self.num_features)
                     # self.__image_summary('weight_images', tf.transpose(self.weights, perm=[3, 0, 1, 2]), self.num_features)
 
-                hid_concat = tf.reshape(tf.transpose(self.hid_prob0, perm=[0, 1, 3, 2]),
-                                        [self.batch_size, self.height, self.width * self.num_features, 1])
+                hid_concat_hor = tf.reshape(tf.transpose(
+                    tf.reshape(self.hid_prob0,
+                               [self.batch_size, self.height, self.width, self.num_features / 2, 2]),
+                    perm=[0, 1, 3, 2, 4]), [self.batch_size, self.height, self.width * self.num_features / 2, 2])
+                hid_concat = tf.reshape(tf.transpose(hid_concat_hor, perm=[0, 3, 1, 2]),
+                                        [self.batch_size, 2 * self.height, self.width * self.num_features / 2, 1])
                 self.__image_summary('hidden_images', hid_concat, self.batch_size)
-                pooled_concat = tf.reshape(tf.transpose(self.pooled, perm=[0, 1, 3, 2]),
-                                        [self.batch_size, self.height / self.pool_size, self.width * self.num_features / self.pool_size, 1])
+
+                pooled_concat_hor = tf.reshape(tf.transpose(
+                    tf.reshape(self.pooled,
+                               [self.batch_size, self.height / self.pool_size, self.width / self.pool_size, self.num_features / 2, 2]),
+                    perm=[0, 1, 3, 2, 4]), [self.batch_size, self.height / self.pool_size, self.width / self.pool_size * self.num_features / 2, 2])
+                pooled_concat = tf.reshape(tf.transpose(pooled_concat_hor, perm=[0, 3, 1, 2]),
+                                        [self.batch_size, 2 * self.height / self.pool_size, self.width / self.pool_size * self.num_features / 2, 1])
                 self.__image_summary('pooled_images', pooled_concat, self.batch_size)
