@@ -251,22 +251,16 @@ class CRBM(Model):
             # Images
             if self.write_image:
                 if self.depth == 3:
-                    self.__image_summary('input_images', self.x, self.batch_size)
-                    self.__image_summary('generated_images', self.vis_1, self.batch_size)
+                    self.__image_summary('input_generated_images', tf.concat(2, [self.vis_0, self.vis_1]), self.batch_size)
                     self.__image_summary('weight_images', tf.transpose(self.weights, perm=[3, 0, 1, 2]), self.num_features)
                 else:
                     # self.__multidimension_summary('input_images', self.x, self.visible_shape, self.num_features)
                     self.__multidimension_summary('generated_images', self.vis_1, self.visible_shape, self.num_features)
                     # self.__image_summary('weight_images', tf.transpose(self.weights, perm=[3, 0, 1, 2]), self.num_features)
 
-                for idx in range(0, self.batch_size):
-                    self.__image_summary(
-                        'hidden_images/{}'.format(idx),
-                        tf.transpose(tf.slice(self.hid_prob0, [idx, 0, 0, 0], [1] + self.hidden_shape),
-                                     perm=[3, 1, 2, 0]),
-                        self.num_features)
-                    self.__image_summary(
-                        'pooled images/{}'.format(idx),
-                        tf.transpose(tf.slice(self.pooled, [idx, 0, 0, 0], [1] + self.pooled_shape),
-                                     perm=[3, 1, 2, 0]),
-                        self.num_features)
+                hid_concat = tf.reshape(tf.transpose(self.hid_prob0, perm=[0, 1, 3, 2]),
+                                        [self.batch_size, self.height, self.width * self.num_features, 1])
+                self.__image_summary('hidden_images', hid_concat, self.batch_size)
+                pooled_concat = tf.reshape(tf.transpose(self.pooled, perm=[0, 1, 3, 2]),
+                                        [self.batch_size, self.height / self.pool_size, self.width * self.num_features / self.pool_size, 1])
+                self.__image_summary('pooled_images', pooled_concat, self.batch_size)
