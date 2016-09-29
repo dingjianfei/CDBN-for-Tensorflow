@@ -12,8 +12,15 @@
 # limitations under the License.
 
 """Convolutional Deep Belief Network for Tensorflow"""
+import tensorflow as tf
 from core.model import Model
 from crbm import CRBM
+
+flags = tf.app.flags
+FLAGS = flags.FLAGS
+
+flags.DEFINE_boolean('layer1_image_summary', False, 'If it writes `image_summary`')
+flags.DEFINE_boolean('layer2_image_summary', False, 'If it writes `image_summary`')
 
 
 class CDBN(Model):
