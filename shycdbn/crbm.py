@@ -13,6 +13,7 @@
 
 """Convolutional Restrict Boltzmann Machine for Tensorflow"""
 import tensorflow as tf
+import os
 from core.model import Model
 
 flags = tf.app.flags
@@ -27,6 +28,7 @@ class CRBM(Model):
 
         self.name = name
         self.write_image = getattr(FLAGS, '{}_image_summary'.format(self.name))
+        self.model_path = '{}/{}'.format(FLAGS.model_path, self.name)
 
         # Training hyperparameters
         self.batch_size = batch_size
@@ -74,11 +76,31 @@ class CRBM(Model):
             self.__gradient_ascent()
             self.__summary()
 
+    def build_init_ops(self):
+        if self.model_exists:
+            self.init_ops = tf.initialize_local_variables()
+        else:
+            self.init_ops = [tf.initialize_local_variables(), tf.initialize_variables(self.variables)]
+        self.saver = tf.train.Saver(self.variables)
+
+    def init_variables(self, sess):
+        if self.model_exists:
+            print 'There is model. It restores'
+            self.saver.restore(sess, self.model_path)
+        sess.run(self.init_ops)
+
     def propagate_results(self, results):
         self.loss_func_val = results[-1]
 
+    def save(self, sess):
+        self.saver.save(sess, self.model_path)
+
     def set_input(self, input):
         self._input = input
+
+    @property
+    def model_exists(self):
+        return os.path.exists(self.model_path)
 
     # Reused private methods
     @staticmethod
@@ -153,7 +175,8 @@ class CRBM(Model):
 
         # Visible (input) units
         with tf.name_scope('visible') as _:
-            self.x = self._input if self._input is not None else tf.placeholder(tf.float32, shape=self.input_shape, name='x')
+            self.x = self._input if self._input is not None \
+                else tf.placeholder(tf.float32, shape=self.input_shape, name='x')
             self.vis_0 = tf.div(self.x, 255, 'vis_0')
 
         # Weight variables
@@ -161,6 +184,8 @@ class CRBM(Model):
             self.weights = self.__weight_variable(self.weight_shape, 'weights_forward')
             self.weights_flipped = tf.transpose(
                 tf.reverse(self.weights, [True, True, False, False]), perm=[0, 1, 3, 2], name='weight_back')
+
+        self.variables = [self.bias, self.cias, self.weights]
 
     def __derive_hidden(self):
         # Hidden units
@@ -172,8 +197,7 @@ class CRBM(Model):
     def __pool(self):
         # Pooling
         with tf.name_scope('pooling') as _:
-            self.pooled_prob = tf.sigmoid(
-                tf.mul(self.__avg_pool(tf.exp(self.signal)), self.pool_size * self.pool_size), name='pooled_prob')
+            self.pooled_prob = tf.sub(1., tf.div(1., 1. + tf.mul(self.__avg_pool(tf.exp(self.signal)), self.pool_size * self.pool_size)), name='pooled_prob')
             self.pooled = self.__sample(self.pooled_prob, 'pooled')
 
     def __gibbs_sampling(self):

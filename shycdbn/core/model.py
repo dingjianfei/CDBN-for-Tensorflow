@@ -24,8 +24,21 @@ class Model:
     def build_graphs(self):
         pass
 
+    # TODO: Rename
+    @abstractmethod
+    def build_init_ops(self):
+        pass
+
+    @abstractmethod
+    def init_variables(self, sess):
+        pass
+
     @abstractmethod
     def propagate_results(self, results):
+        pass
+
+    @abstractmethod
+    def save(self, sess):
         pass
 
     @abstractproperty

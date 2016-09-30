@@ -13,13 +13,13 @@
 
 """Tensorflow Runner"""
 
-import tensorflow as tf
 import os
+import tensorflow as tf
 from model import Model
 
 flags = tf.app.flags
 flags.DEFINE_string('summary_dir', 'summary', 'Directory where all event data are stored')
-flags.DEFINE_string('model_path', 'models/model', 'File path where all models are stored')
+flags.DEFINE_string('model_path', 'models', 'File path where all models are stored')
 flags.DEFINE_integer('num_threads', 24, 'The number of threads for running')
 flags.DEFINE_integer('num_epochs', 3, 'The number of epochs')
 flags.DEFINE_integer('batch_size', 32, 'The number of examples per batch')
@@ -62,25 +62,31 @@ class Runner:
         self.model = model
         self.model.build_graphs()
 
-        batch_num = tf.Variable(tf.constant(0))
-        increment_batch_num = batch_num.assign_add(1)
+        self.batch_num = tf.Variable(tf.constant(0))
+        increment_batch_num = self.batch_num.assign_add(1)
 
         merged_summary = tf.merge_all_summaries()
 
-        if os.path.exists(FLAGS.model_path):
+        self.model.build_init_ops()
+        self.model_path = '{}/batch_num'.format(FLAGS.model_path)
+        if self.model_exists:
             self.init_op = tf.initialize_local_variables()
         else:
-            self.init_op = tf.group(tf.initialize_all_variables(), tf.initialize_local_variables())
-
-        self.saver = tf.train.Saver()
+            self.init_op = [tf.initialize_local_variables(), tf.initialize_variables([self.batch_num])]
+        self.saver = tf.train.Saver([self.batch_num])
 
         self.ops = [increment_batch_num, merged_summary]
+
+    @property
+    def model_exists(self):
+        return os.path.exists(self.model_path)
 
     def run(self):
         with tf.Session() as sess:
             summary_writer = tf.train.SummaryWriter(FLAGS.summary_dir, sess.graph)
-            if os.path.exists(FLAGS.model_path):
-                self.saver.restore(sess, FLAGS.model_path)
+            self.model.init_variables(sess)
+            if self.model_exists:
+                self.saver.restore(sess, self.model_path)
             sess.run(self.init_op)
 
             coord = tf.train.Coordinator()
@@ -95,7 +101,8 @@ class Runner:
                         results = sess.run(ops, feed_dict={self.model.input: images})
                         summary_writer.add_summary(results[-1], results[-2])
                         self.model.propagate_results(results[0:-2])
-                        self.saver.save(sess, FLAGS.model_path)
+                        self.model.save(sess)
+                        self.saver.save(sess, self.model_path)
                     else:
                         # Training finished
                         results = sess.run(self.model.output, feed_dict={self.model.input: images})

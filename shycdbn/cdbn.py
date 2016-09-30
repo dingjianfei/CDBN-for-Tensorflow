@@ -21,6 +21,7 @@ FLAGS = flags.FLAGS
 
 flags.DEFINE_boolean('layer1_image_summary', False, 'If it writes `image_summary`')
 flags.DEFINE_boolean('layer2_image_summary', False, 'If it writes `image_summary`')
+flags.DEFINE_boolean('layer3_image_summary', False, 'If it writes `image_summary`')
 
 
 class CDBN(Model):
@@ -52,8 +53,20 @@ class CDBN(Model):
                 crbm.set_input(self.crbms[idx - 1].output)
             crbm.build_graphs()
 
+    def build_init_ops(self):
+        for crbm in self.crbms:
+            crbm.build_init_ops()
+
+    def init_variables(self, sess):
+        for crbm in self.crbms:
+            crbm.init_variables(sess)
+
     def propagate_results(self, results):
         self.training_layer.propagate_results(results)
+
+    def save(self, sess):
+        for crbm in self.crbms:
+            crbm.save(sess)
 
     @property
     def training_layer(self):
